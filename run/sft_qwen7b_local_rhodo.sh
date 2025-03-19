@@ -23,7 +23,7 @@ llamafactory-cli train \
   --cutoff_len 16384 \
   --overwrite_cache \
   --preprocessing_num_workers 16 \
-  --output_dir saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local${local}_top${topk} \
+  --output_dir ${OUTPUT_DIR}/saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local${local}_top${topk} \
   --logging_steps 10 \
   --save_steps 1000 \
   --plot_loss \

@@ -1,9 +1,16 @@
 #!/bin/bash
+#SBATCH --job-name=sft
+#SBATCH --partition=preempt
+#SBATCH --nodes=1
+#SBATCH --time=48:00:00
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=64G
+#SBATCH --gres=gpu:8
+#SBATCH --output=logs/sft_7b_sparse_local1k_top256.out
+#SBATCH --error=logs/sft_7b_sparse_local1k_top256.err
 
-OUTPUT_DIR=/sensei-fs/users/xuhuang/rsadhukh/LLaMA-Factory
-export ALLOW_EXTRA_ARGS=1
-local=512
-topk=256
+local=768
+topk=0
 
 llamafactory-cli train \
   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
@@ -23,7 +30,7 @@ llamafactory-cli train \
   --cutoff_len 16384 \
   --overwrite_cache \
   --preprocessing_num_workers 16 \
-  --output_dir ${OUTPUT_DIR}/saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local${local}_top${topk} \
+  --output_dir saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local${local}_top${topk} \
   --logging_steps 10 \
   --save_steps 1000 \
   --plot_loss \
