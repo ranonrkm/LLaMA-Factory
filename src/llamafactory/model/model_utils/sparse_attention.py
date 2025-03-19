@@ -114,34 +114,33 @@ def sparse_attn_forward(
             attn_mask = torch.ones(*key_states.shape[:-1], seq_len, device=hidden_states.device).to(torch.bool)
             attn_mask.tril_(0)
 
-            chunk_size = 1024
-            num_chunks = (seq_len - n_full_attn) // chunk_size
-            for i in range(num_chunks): 
-                start = n_full_attn + i * chunk_size
-                end = seq_len if i == num_chunks - 1 else start + chunk_size
-                dynamic_mask = torch.ones(*key_states.shape[:2], end - start, end, device=hidden_states.device).to(torch.bool)
-                dynamic_mask.tril_(start - local)
-                dynamic_mask[..., :sink] = False
+            if topk > 0:
+                chunk_size = 1024
+                num_chunks = (seq_len - n_full_attn) // chunk_size
+                for i in range(num_chunks): 
+                    start = n_full_attn + i * chunk_size
+                    end = seq_len if i == num_chunks - 1 else start + chunk_size
+                    dynamic_mask = torch.ones(*key_states.shape[:2], end - start, end, device=hidden_states.device).to(torch.bool)
+                    dynamic_mask.tril_(start - local)
+                    dynamic_mask[..., :sink] = False
 
-                with torch.no_grad():
-                    mean_query_states = rearrange(query_states[..., start:end, :], 'b (h r) n d -> b h r n d', h=num_kv_heads).mean(dim=2)
-                    attn = torch.einsum('b h n d, b h m d -> b h n m', mean_query_states, key_states.narrow(2, 0, end))
-                    attn.masked_fill_(dynamic_mask.logical_not(), -1e9)
-                    topk_ids = attn.topk(topk, dim=-1).indices
+                    with torch.no_grad():
+                        mean_query_states = rearrange(query_states[..., start:end, :], 'b (h r) n d -> b h r n d', h=num_kv_heads).mean(dim=2)
+                        attn = torch.einsum('b h n d, b h m d -> b h n m', mean_query_states, key_states.narrow(2, 0, end))
+                        attn.masked_fill_(dynamic_mask.logical_not(), -1e9)
+                        topk_ids = attn.topk(topk, dim=-1).indices
 
-                attn_mask[..., start:end, :end].logical_xor_(dynamic_mask)
-                attn_mask[..., start:end, :end].scatter_(dim=-1, index=topk_ids, value=True)
+                    attn_mask[..., start:end, :end].logical_xor_(dynamic_mask)
+                    attn_mask[..., start:end, :end].scatter_(dim=-1, index=topk_ids, value=True)
+
+            else:
+                attn_mask[..., n_full_attn:, sink:].triu_(1)
 
             num_kv_groups = self.num_key_value_groups
             attn_mask = attn_mask.unsqueeze(2).expand(-1, -1, num_kv_groups, -1, -1)
             attn_mask = rearrange(attn_mask, 'b h r t n -> b (h r) t n')
 
             attention_interface = ALL_ATTENTION_FUNCTIONS["sdpa"]  
-            # dropout = 0.0
-            
-        elif self.layer_idx > 0 and topk == 0:
-            # use sliding window attention
-            sliding_window = (local, 0)
             # dropout = 0.0
 
         attn_output, attn_weights = attention_interface(
