@@ -32,4 +32,4 @@ llamafactory-cli train \
     --bf16 true \
     --ddp_timeout 180000000 \
     --save_total_limit 1 \
-    --push_to_hub Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft
+    --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft

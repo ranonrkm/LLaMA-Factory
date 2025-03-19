@@ -6,8 +6,8 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:8
-#SBATCH --output=logs/sft_7b_sparse_local1k_top256.out
-#SBATCH --error=logs/sft_7b_sparse_local1k_top256.err
+#SBATCH --output=logs/sft_7b_sparse_local.out
+#SBATCH --error=logs/sft_7b_sparse_local.err
 
 local=768
 topk=0
@@ -45,4 +45,4 @@ llamafactory-cli train \
   --bf16 \
   --ddp_timeout 180000000 \
   --save_total_limit 1 \
-  --push_to_hub Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft-sparse-local${local}-top${topk}
+  --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft-sparse-local${local}-top${topk} 
