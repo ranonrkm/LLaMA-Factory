@@ -1,15 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=sft
-#SBATCH --partition=preempt
-#SBATCH --nodes=1
-#SBATCH --time=48:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=64G
-#SBATCH --gres=gpu:8
-#SBATCH --output=logs/sft_7b_sparse_local1k_top256.out
-#SBATCH --error=logs/sft_7b_sparse_local1k_top256.err
 
+OUTPUT_DIR=/sensei-fs/users/xuhuang/rsadhukh/LLaMA-Factory
 export ALLOW_EXTRA_ARGS=1
+local=768
+topk=0
+
 llamafactory-cli train \
   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
   --trust_remote_code \
@@ -17,8 +12,8 @@ llamafactory-cli train \
   --do_train \
   --finetuning_type lora \
   --sparse_training \
-  --sparse_attn_topk 256 \
-  --sparse_attn_local 512 \
+  --sparse_attn_topk ${topk} \
+  --sparse_attn_local ${local} \
   --sparse_attn_sink 4 \
   --lora_rank 16 \
   --lora_target all \
@@ -28,7 +23,7 @@ llamafactory-cli train \
   --cutoff_len 16384 \
   --overwrite_cache \
   --preprocessing_num_workers 16 \
-  --output_dir saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local512_top256 \
+  --output_dir saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local${local}_top${topk} \
   --logging_steps 10 \
   --save_steps 1000 \
   --plot_loss \
@@ -42,4 +37,5 @@ llamafactory-cli train \
   --warmup_ratio 0.1 \
   --bf16 \
   --ddp_timeout 180000000 \
-  --save_total_limit 1
+  --save_total_limit 1 \
+  --push_to_hub Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft-sparse-local${local}-top${topk}
