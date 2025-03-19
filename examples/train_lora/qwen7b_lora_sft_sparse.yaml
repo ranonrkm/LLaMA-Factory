@@ -1,0 +1,43 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+sparse_training: true
+lora_rank: 16
+lora_target: all
+deepspeed: examples/deepspeed/ds_z3_offload_config.json  # choices: [ds_z0_config.json, ds_z2_config.json, ds_z3_config.json]
+
+### dataset
+dataset: open_r1_math
+template: qwen
+cutoff_len: 24576
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+output_dir: saves/qwen2.5-7b/lora/sft_sparse_opt
+logging_steps: 10
+save_steps: 500
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 2
+enable_liger_kernel: true
+learning_rate: 1.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+save_total_limit: 1
+
+# ### wandb
+# report_to: wandb
+# wandb_entity: "infini-lab"
+# wandb_project: "llama_factory"

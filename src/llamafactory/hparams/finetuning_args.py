@@ -405,6 +405,10 @@ class FinetuningArguments(
         default="lora",
         metadata={"help": "Which fine-tuning method to use."},
     )
+    sparse_training: bool = field(
+        default=False,
+        metadata={"help": "Whether to use sparse attention for training. Do not specify it."},
+    )
     use_llama_pro: bool = field(
         default=False,
         metadata={"help": "Whether or not to make only the parameters in the expanded blocks trainable."},

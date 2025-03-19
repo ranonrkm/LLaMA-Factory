@@ -34,7 +34,7 @@ from .model_utils.misc import register_autoclass
 from .model_utils.mod import convert_pretrained_model_to_mod, load_mod_pretrained_model
 from .model_utils.unsloth import load_unsloth_pretrained_model
 from .model_utils.valuehead import load_valuehead_params
-from .patcher import patch_config, patch_model, patch_processor, patch_tokenizer, patch_valuehead_model
+from .patcher import patch_config, patch_model, patch_processor, patch_tokenizer, patch_valuehead_model, patch_attention
 
 
 if TYPE_CHECKING:
@@ -161,6 +161,9 @@ def load_model(
 
         if model_args.mixture_of_depths == "convert":
             model = convert_pretrained_model_to_mod(model, config, model_args)
+
+    if finetuning_args.sparse_training and is_trainable:
+        patch_attention(model, model_args)
 
     if not lazy_load:
         patch_model(model, tokenizer, model_args, is_trainable, add_valuehead)

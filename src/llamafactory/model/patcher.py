@@ -33,6 +33,7 @@ from .model_utils.packing import configure_packing
 from .model_utils.quantization import configure_quantization
 from .model_utils.rope import configure_rope
 from .model_utils.valuehead import prepare_valuehead_model
+from .model_utils.sparse_attention import sparse_attn_forward
 from .model_utils.visual import (
     autocast_projector_dtype,
     configure_visual_model,
@@ -215,3 +216,15 @@ def patch_valuehead_model(model: "AutoModelForCausalLMWithValueHead") -> None:
     setattr(model, "get_input_embeddings", MethodType(get_input_embeddings, model))
     setattr(model, "get_output_embeddings", MethodType(get_output_embeddings, model))
     setattr(model, "create_or_update_model_card", MethodType(create_or_update_model_card, model))
+
+
+def patch_attention(model: "PreTrainedModel", model_args: "ModelArguments") -> None:
+    # resursively go through all the modules and if the module is an attention ("self_attn") layer, patch its forward with sparse_attn_forward
+    def patch_forward(module: torch.nn.Module) -> None:
+        for name, child in module.named_children():
+            if "self_attn" in name:
+                child.forward = MethodType(sparse_attn_forward, child)
+            else:
+                patch_forward(child)
+
+    patch_forward(model)
