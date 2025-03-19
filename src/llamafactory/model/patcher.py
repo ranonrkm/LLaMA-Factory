@@ -224,6 +224,9 @@ def patch_attention(model: "PreTrainedModel", model_args: "ModelArguments") -> N
         for name, child in module.named_children():
             if "self_attn" in name:
                 child.forward = MethodType(sparse_attn_forward, child)
+                child.sink = model_args.sink
+                child.local = model_args.local
+                child.topk = model_args.sparse_attn_topk
             else:
                 patch_forward(child)
 

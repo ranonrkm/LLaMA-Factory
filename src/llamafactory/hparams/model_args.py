@@ -317,6 +317,21 @@ class ModelArguments(QuantizationArguments, ProcessorArguments, ExportArguments,
         init=False,
         metadata={"help": "Whether use block diag attention or not, derived from `neat_packing`. Do not specify it."},
     )
+    sink: int = field(
+        default=4,
+        init=False,
+        metadata={"help": "Sink in top-k attention"},
+    )
+    local: int = field(
+        default=512,
+        init=False,
+        metadata={"help": "Local in top-k attention"},
+    )
+    sparse_attn_topk: int = field(
+        default=256,
+        init=False,
+        metadata={"help": "Top-k in top-k attention"},
+    )
 
     def __post_init__(self):
         if self.model_name_or_path is None:

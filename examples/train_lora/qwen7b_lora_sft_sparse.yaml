@@ -1,6 +1,10 @@
 ### model
 model_name_or_path: Qwen/Qwen2.5-7B-Instruct
 trust_remote_code: true
+flash_attn: fa2
+sink: 4
+local: 512
+sparse_attn_topk: 256
 
 ### method
 stage: sft
@@ -14,7 +18,7 @@ deepspeed: examples/deepspeed/ds_z3_offload_config.json  # choices: [ds_z0_confi
 ### dataset
 dataset: open_r1_math
 template: qwen
-cutoff_len: 24576
+cutoff_len: 16384
 overwrite_cache: true
 preprocessing_num_workers: 16
 
