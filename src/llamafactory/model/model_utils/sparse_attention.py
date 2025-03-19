@@ -1,6 +1,8 @@
 from typing import Optional, Tuple, Callable
+import math
 import torch
 from torch import nn
+import torch.nn.functional as F
 from einops import rearrange
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
@@ -103,18 +105,22 @@ def sparse_attn_forward(
         sink = self.sink    #4
         local = self.local  #1024
         topk = self.topk    #256
+        topp = self.topp    #0.95
+        assert not (topk > 0 and topp > 0), "topk and topp cannot be both set to a value greater than 0"
+        n_full_attn = sink + local + topk
+        if topp > 0:
+            n_full_attn += local
         
         sliding_window = None
         attention_interface = ALL_ATTENTION_FUNCTIONS["flash_attention_2"]
         dropout = 0.0 if not self.training else self.attention_dropout
         
-        if self.layer_idx > 0 and (seq_len - sink - local) > topk:
+        if self.layer_idx > 0 and seq_len > n_full_attn:
             num_kv_heads = self.config.num_key_value_heads
-            n_full_attn = sink + local + topk
             attn_mask = torch.ones(*key_states.shape[:-1], seq_len, device=hidden_states.device).to(torch.bool)
             attn_mask.tril_(0)
 
-            if topk > 0:
+            if topk > 0 or topp > 0:
                 chunk_size = 1024
                 num_chunks = (seq_len - n_full_attn) // chunk_size
                 for i in range(num_chunks): 
@@ -123,15 +129,24 @@ def sparse_attn_forward(
                     dynamic_mask = torch.ones(*key_states.shape[:2], end - start, end, device=hidden_states.device).to(torch.bool)
                     dynamic_mask.tril_(start - local)
                     dynamic_mask[..., :sink] = False
+                    attn_mask[..., start:end, :end].logical_xor_(dynamic_mask)
 
                     with torch.no_grad():
                         mean_query_states = rearrange(query_states[..., start:end, :], 'b (h r) n d -> b h r n d', h=num_kv_heads).mean(dim=2)
                         attn = torch.einsum('b h n d, b h m d -> b h n m', mean_query_states, key_states.narrow(2, 0, end))
                         attn.masked_fill_(dynamic_mask.logical_not(), -1e9)
-                        topk_ids = attn.topk(topk, dim=-1).indices
-
-                    attn_mask[..., start:end, :end].logical_xor_(dynamic_mask)
-                    attn_mask[..., start:end, :end].scatter_(dim=-1, index=topk_ids, value=True)
+                        if topk > 0:
+                            topk_ids = attn.topk(topk, dim=-1).indices
+                            attn_mask[..., start:end, :end].scatter_(dim=-1, index=topk_ids, value=True)
+                        else:
+                            attn = attn / math.sqrt(self.head_dim)
+                            attn = F.softmax(attn, dim=-1, dtype=torch.float32)
+                            sorted_attn, sorted_ids = attn.sort(dim=-1, descending=True)
+                            sorted_attn = sorted_attn.cumsum(dim=-1)
+                            select_mask = torch.zeros_like(sorted_attn, dtype=torch.bool)
+                            select_mask[..., 1:] = sorted_attn[..., :-1] < topp
+                            select_mask[..., 0] = True
+                            attn_mask[..., start:end, :end].scatter_(dim=-1, index=sorted_ids, value=select_mask)
 
             else:
                 attn_mask[..., n_full_attn:, sink:].triu_(1)
