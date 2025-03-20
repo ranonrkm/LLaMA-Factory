@@ -114,6 +114,7 @@ def sparse_attn_forward(
         sliding_window = None
         attention_interface = ALL_ATTENTION_FUNCTIONS["flash_attention_2"]
         dropout = 0.0 if not self.training else self.attention_dropout
+        attn_mask = None
         
         if self.layer_idx > 0 and seq_len > n_full_attn:
             num_kv_heads = self.config.num_key_value_heads
@@ -163,7 +164,7 @@ def sparse_attn_forward(
             query_states,
             key_states,
             value_states,
-            attention_mask=None,    
+            attention_mask=attn_mask,    
             dropout=dropout,    # (not self.training or self.layer_idx > 0)
             scaling=self.scaling,
             sliding_window=sliding_window,  # main diff with Llama
