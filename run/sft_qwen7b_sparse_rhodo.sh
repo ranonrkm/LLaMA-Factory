@@ -2,8 +2,8 @@
 
 OUTPUT_DIR=/sensei-fs/users/xuhuang/rsadhukh/LLaMA-Factory
 export ALLOW_EXTRA_ARGS=1
-local=512
-topk=256
+topk=$1
+local=$2
 
 llamafactory-cli train \
   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
