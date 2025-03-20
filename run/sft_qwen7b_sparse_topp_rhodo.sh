@@ -24,7 +24,7 @@ llamafactory-cli train \
   --cutoff_len 16384 \
   --overwrite_cache \
   --preprocessing_num_workers 16 \
-  --output_dir ${OUTPUT_DIR}/saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local${local}_top${topk} \
+  --output_dir ${OUTPUT_DIR}/saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local${local}_top${topp} \
   --logging_steps 10 \
   --save_steps 1000 \
   --plot_loss \
@@ -39,4 +39,4 @@ llamafactory-cli train \
   --bf16 \
   --ddp_timeout 180000000 \
   --save_total_limit 1 \
-  --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft-sparse-local${local}-top${topk}
+  --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft-sparse-local${local}-top${topp}
