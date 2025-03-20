@@ -164,6 +164,10 @@ class SparseAttnArguments:
         default=256,
         metadata={"help": "The top-k value for sparse attention."},
     )
+    sparse_attn_topp: float = field(
+        default=0.0,
+        metadata={"help": "The top-p value for sparse attention."},
+    )
     sparse_attn_sink: int = field(
         default=4,
         metadata={"help": "The sink value for sparse attention."},

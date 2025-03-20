@@ -227,6 +227,7 @@ def patch_attention(model: "PreTrainedModel", model_args: "ModelArguments") -> N
                 child.sink = model_args.sparse_attn_sink
                 child.local = model_args.sparse_attn_local
                 child.topk = model_args.sparse_attn_topk
+                child.topp = model_args.sparse_attn_topp
             else:
                 patch_forward(child)
 
