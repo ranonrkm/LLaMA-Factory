@@ -9,6 +9,7 @@
 #SBATCH --output=logs/sft_7b_sparse_local1k_top256.out
 #SBATCH --error=logs/sft_7b_sparse_local1k_top256.err
 
+export CUDA_VISIBLE_DEVICES=7
 export ALLOW_EXTRA_ARGS=1
 llamafactory-cli train \
   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
@@ -17,15 +18,15 @@ llamafactory-cli train \
   --do_train \
   --finetuning_type lora \
   --sparse_training \
-  --sparse_attn_topk 256 \
+  --sparse_attn_topk 0 \
+  --sparse_attn_topp 0.85 \
   --sparse_attn_local 512 \
   --sparse_attn_sink 4 \
   --lora_rank 16 \
   --lora_target all \
-  --deepspeed examples/deepspeed/ds_z3_config.json \
   --dataset open_r1_math \
   --template qwen \
-  --cutoff_len 16384 \
+  --cutoff_len 4096 \
   --overwrite_cache \
   --preprocessing_num_workers 16 \
   --output_dir saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local512_top256 \
@@ -43,3 +44,5 @@ llamafactory-cli train \
   --bf16 \
   --ddp_timeout 180000000 \
   --save_total_limit 1
+
+  # --deepspeed examples/deepspeed/ds_z3_config.json \
