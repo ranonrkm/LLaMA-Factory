@@ -11,17 +11,18 @@
 
 local=768
 topk=0
-
+export ALLOW_EXTRA_ARGS=1
 llamafactory-cli train \
   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
   --trust_remote_code \
+  --flash_attn sdpa \
+  --sparse_attn_topk ${topk} \
+  --sparse_attn_local ${local} \
+  --sparse_attn_sink 4 \
   --stage sft \
   --do_train \
   --finetuning_type lora \
   --sparse_training \
-  --sparse_attn_topk ${topk} \
-  --sparse_attn_local ${local} \
-  --sparse_attn_sink 4 \
   --lora_rank 16 \
   --lora_target all \
   --deepspeed examples/deepspeed/ds_z3_config.json \
