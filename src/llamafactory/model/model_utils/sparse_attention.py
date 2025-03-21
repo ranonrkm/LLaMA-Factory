@@ -115,6 +115,7 @@ def sparse_attn_forward(
         attention_interface = ALL_ATTENTION_FUNCTIONS["flash_attention_2"]
         dropout = 0.0 if not self.training else self.attention_dropout
         attn_mask = None
+        num_kv_groups = self.num_key_value_groups
         
         if self.layer_idx > 0 and seq_len > n_full_attn:
             num_kv_heads = self.config.num_key_value_heads
@@ -133,26 +134,31 @@ def sparse_attn_forward(
                     attn_mask[..., start:end, :end].logical_xor_(dynamic_mask)
 
                     with torch.no_grad():
-                        mean_query_states = rearrange(query_states[..., start:end, :], 'b (h r) n d -> b h r n d', h=num_kv_heads).mean(dim=2)
-                        attn = torch.einsum('b h n d, b h m d -> b h n m', mean_query_states, key_states.narrow(2, 0, end))
-                        attn.masked_fill_(dynamic_mask.logical_not(), -1e9)
                         if topk > 0:
+                            mean_query_states = rearrange(query_states[..., start:end, :], 'b (h r) n d -> b h r n d', h=num_kv_heads).mean(dim=2)
+                            attn = torch.einsum('b h n d, b h m d -> b h n m', mean_query_states, key_states.narrow(2, 0, end))
+                            attn.masked_fill_(dynamic_mask.logical_not(), -1e9)
                             topk_ids = attn.topk(topk, dim=-1).indices
                             attn_mask[..., start:end, :end].scatter_(dim=-1, index=topk_ids, value=True)
                         else:
-                            attn = attn / math.sqrt(self.head_dim)
-                            attn = F.softmax(attn, dim=-1, dtype=torch.float32)
+                            query_states_reshaped = rearrange(query_states[..., start:end, :], 'b (h r) n d -> b h (r n) d', h=num_kv_heads)
+                            attn = torch.einsum('b h i d, b h j d -> b h i j', query_states_reshaped, key_states.narrow(2, 0, end)) / math.sqrt(self.head_dim)
+                            dynamic_mask = dynamic_mask.unsqueeze(2).expand(-1, -1, num_kv_groups, -1, -1)
+                            dynamic_mask = rearrange(dynamic_mask, 'b h r t n -> b h (r t) n')
+                            attn.masked_fill_(dynamic_mask.logical_not(), -1e9)
+                            attn = F.softmax(attn.float(), dim=-1)
                             sorted_attn, sorted_ids = attn.sort(dim=-1, descending=True)
                             sorted_attn = sorted_attn.cumsum(dim=-1)
                             select_mask = torch.zeros_like(sorted_attn, dtype=torch.bool)
                             select_mask[..., 1:] = sorted_attn[..., :-1] < topp
                             select_mask[..., 0] = True
-                            attn_mask[..., start:end, :end].scatter_(dim=-1, index=sorted_ids, value=select_mask)
+                            sorted_ids = rearrange(sorted_ids, 'b h (r i) j -> b h i (r j)', r=num_kv_groups)
+                            select_mask = rearrange(select_mask, 'b h (r i) j -> b h i (r j)', r=num_kv_groups)
+                            attn_mask[..., start:end, :end].scatter_add_(dim=-1, index=sorted_ids, src=select_mask)
 
             else:
                 attn_mask[..., n_full_attn:, sink:].triu_(1)
 
-            num_kv_groups = self.num_key_value_groups
             attn_mask = attn_mask.unsqueeze(2).expand(-1, -1, num_kv_groups, -1, -1)
             attn_mask = rearrange(attn_mask, 'b h r t n -> b (h r) t n')
 
