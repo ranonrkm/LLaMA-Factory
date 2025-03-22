@@ -23,22 +23,21 @@ llamafactory-cli train \
     --dataset open_r1_math \
     --template qwen \
     --cutoff_len $ctx_len \
-    --overwrite_cache true \
+    --overwrite_cache \
     --preprocessing_num_workers 16 \
     --output_dir ${OUTPUT_DIR}/saves/qwen2.5-3b/full/sft_sparse_ctx${ctx_len}_local${local}_top${topk}_iter${topk_iter} \
     --logging_steps 10 \
     --save_steps 1000 \
-    --plot_loss true \
-    --overwrite_output_dir true \
+    --plot_loss \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 2 \
-    --enable_liger_kernel true \
+    --enable_liger_kernel \
     --learning_rate 5.0e-5 \
     --weight_decay 0.0001 \
     --num_train_epochs 5.0 \
     --lr_scheduler_type cosine \
     --warmup_ratio 0.1 \
-    --bf16 true \
+    --bf16 \
     --ddp_timeout 180000000 \
     --save_total_limit 1 \
     --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-3b-sft_sparse_ctx${ctx_len}_local${local}_top${topk}_iter${topk_iter}
