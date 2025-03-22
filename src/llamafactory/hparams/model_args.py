@@ -155,31 +155,9 @@ class VllmArguments:
         metadata={"help": "Config to initialize the vllm engine. Please use JSON strings."},
     )
 
-@dataclass
-class SparseAttnArguments:
-    r"""
-    Arguments pertaining to the sparse attention.
-    """
-    sparse_attn_topk: int = field(
-        default=256,
-        metadata={"help": "The top-k value for sparse attention."},
-    )
-    sparse_attn_topp: float = field(
-        default=0.0,
-        metadata={"help": "The top-p value for sparse attention."},
-    )
-    sparse_attn_sink: int = field(
-        default=4,
-        metadata={"help": "The sink value for sparse attention."},
-    )
-    sparse_attn_local: int = field(
-        default=512,
-        metadata={"help": "The local value for sparse attention."},
-    )
-
 
 @dataclass
-class ModelArguments(QuantizationArguments, ProcessorArguments, ExportArguments, VllmArguments, SparseAttnArguments):
+class ModelArguments(QuantizationArguments, ProcessorArguments, ExportArguments, VllmArguments):
     r"""
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune or infer.
     """

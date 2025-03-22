@@ -23,13 +23,15 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 from transformers import Seq2SeqTrainer
+from transformers.trainer import SaveStrategy, is_torch_xla_available
 from typing_extensions import override
 
+from ...model import patch_attention
 from ...extras import logging
 from ...extras.constants import IGNORE_INDEX
 from ...extras.packages import is_transformers_version_greater_than
-from ..callbacks import SaveProcessorCallback
-from ..trainer_utils import create_custom_optimizer, create_custom_scheduler
+from ..callbacks import SaveProcessorCallback, IterativeSparsityCallback
+from ..trainer_utils import create_custom_optimizer, create_custom_scheduler, CustomTrainerControl
 
 
 if TYPE_CHECKING:
@@ -74,6 +76,14 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
             self.accelerator.clip_grad_norm_ = MethodType(clip_grad_norm_old_version, self.accelerator)
             self.add_callback(BAdamCallback)
+
+        if finetuning_args.sparse_training:
+            self.add_callback(IterativeSparsityCallback(
+                                sparse_attn_topk=finetuning_args.sparse_attn_topk,
+                                min_topk=finetuning_args.min_sparse_attn_topk,
+                                iter_freq=finetuning_args.sparsity_update_interval))
+
+        self.control = CustomTrainerControl()   # change the control to CustomTrainerControl
 
     @override
     def create_optimizer(self) -> "torch.optim.Optimizer":
@@ -158,3 +168,49 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         with open(output_prediction_file, "w", encoding="utf-8") as f:
             for text, pred, label in zip(decoded_inputs, decoded_preds, decoded_labels):
                 f.write(json.dumps({"prompt": text, "predict": pred, "label": label}, ensure_ascii=False) + "\n")
+
+    def _maybe_log_save_evaluate(self, tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time):
+        if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
+            if is_torch_xla_available():
+                xm.mark_step()
+
+            logs: Dict[str, float] = {}
+
+            # all_gather + mean() to get average loss over all processes
+            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
+
+            # reset tr_loss to zero
+            tr_loss -= tr_loss
+
+            logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            if grad_norm is not None:
+                logs["grad_norm"] = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+            logs["learning_rate"] = self._get_learning_rate()
+
+            # main diff: iterative sparsity
+            if self.finetuning_args.sparse_training:
+                if self.control.reduce_topk:
+                    self.finetuning_args.sparse_attn_topk //= 2
+                    patch_attention(self.model, self.finetuning_args)
+                    self.control.reduce_topk = False
+
+                logs["kv_budget"] = self.finetuning_args.sparse_attn_topk
+
+            self._total_loss_scalar += tr_loss_scalar
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+
+            self.log(logs, start_time)
+
+        metrics = None
+        if self.control.should_evaluate:
+            metrics = self._evaluate(trial, ignore_keys_for_eval)
+            is_new_best_metric = self._determine_best_metric(metrics=metrics, trial=trial)
+
+            if self.args.save_strategy == SaveStrategy.BEST:
+                self.control.should_save = is_new_best_metric
+
+        if self.control.should_save:
+            self._save_checkpoint(model, trial)
+            self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+        

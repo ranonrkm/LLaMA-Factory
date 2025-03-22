@@ -386,8 +386,42 @@ class SwanLabArguments:
 
 
 @dataclass
+class SparseAttnArguments:
+    r"""
+    Arguments pertaining to the sparse attention.
+    """
+    sparse_training: bool = field(
+        default=False,
+        metadata={"help": "Whether to use sparse attention for training. Do not specify it."},
+    )
+    sparse_attn_topk: int = field(
+        default=256,
+        metadata={"help": "The top-k value for sparse attention."},
+    )
+    sparse_attn_topp: float = field(
+        default=0.0,
+        metadata={"help": "The top-p value for sparse attention."},
+    )
+    sparse_attn_sink: int = field(
+        default=4,
+        metadata={"help": "The sink value for sparse attention."},
+    )
+    sparse_attn_local: int = field(
+        default=512,
+        metadata={"help": "The local value for sparse attention."},
+    )
+    min_sparse_attn_topk: int = field(
+        default=256,
+        metadata={"help": "The minimum top-k value for sparse attention."},
+    )
+    sparsity_update_interval: int = field(
+        default=2000,
+        metadata={"help": "The interval for updating the sparsity."},
+    )
+
+@dataclass
 class FinetuningArguments(
-    FreezeArguments, LoraArguments, RLHFArguments, GaloreArguments, ApolloArguments, BAdamArgument, SwanLabArguments
+    FreezeArguments, LoraArguments, RLHFArguments, GaloreArguments, ApolloArguments, BAdamArgument, SwanLabArguments, SparseAttnArguments
 ):
     r"""
     Arguments pertaining to which techniques we are going to fine-tuning with.
@@ -404,10 +438,6 @@ class FinetuningArguments(
     finetuning_type: Literal["lora", "freeze", "full"] = field(
         default="lora",
         metadata={"help": "Which fine-tuning method to use."},
-    )
-    sparse_training: bool = field(
-        default=False,
-        metadata={"help": "Whether to use sparse attention for training. Do not specify it."},
     )
     use_llama_pro: bool = field(
         default=False,

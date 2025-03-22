@@ -5,6 +5,7 @@ export ALLOW_EXTRA_ARGS=1
 topk=$1
 local=$2
 ctx_len=$3
+topk_iter=$4
 
 llamafactory-cli train \
     --model_name_or_path Qwen/Qwen2.5-3B-Instruct \
@@ -12,17 +13,19 @@ llamafactory-cli train \
     --flash_attn fa2 \
     --stage sft \
     --do_train true \
+    --finetuning_type full \
     --sparse_training \
     --sparse_attn_topk ${topk} \
     --sparse_attn_local ${local} \
     --sparse_attn_sink 4 \
+    --sparsity_update_interval ${topk_iter} \
     --deepspeed examples/deepspeed/ds_z3_config.json \
     --dataset open_r1_math \
     --template qwen \
     --cutoff_len $ctx_len \
     --overwrite_cache true \
     --preprocessing_num_workers 16 \
-    --output_dir ${OUTPUT_DIR}/saves/qwen2.5-3b/full/sft_sparse_ctx${ctx_len} \
+    --output_dir ${OUTPUT_DIR}/saves/qwen2.5-3b/full/sft_sparse_ctx${ctx_len}_local${local}_top${topk}_iter${topk_iter} \
     --logging_steps 10 \
     --save_steps 1000 \
     --plot_loss true \
@@ -33,9 +36,9 @@ llamafactory-cli train \
     --learning_rate 5.0e-5 \
     --weight_decay 0.0001 \
     --num_train_epochs 5.0 \
-    --lr_scheduler_type linear \
+    --lr_scheduler_type cosine \
     --warmup_ratio 0.1 \
     --bf16 true \
     --ddp_timeout 180000000 \
     --save_total_limit 1 \
-    --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-3b-sft-sparse_ctx${ctx_len}
+    --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-3b-sft_sparse_ctx${ctx_len}_local${local}_top${topk}_iter${topk_iter}

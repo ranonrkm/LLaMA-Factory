@@ -34,6 +34,7 @@ from transformers.utils import (
 from typing_extensions import override
 
 from ..extras import logging
+from .trainer_utils import CustomTrainerControl
 from ..extras.constants import TRAINER_LOG, V_HEAD_SAFE_WEIGHTS_NAME, V_HEAD_WEIGHTS_NAME
 from ..extras.misc import get_peak_memory, is_env_enabled, use_ray
 
@@ -103,7 +104,7 @@ class FixValueHeadModelCallback(TrainerCallback):
     """
 
     @override
-    def on_save(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_save(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if args.should_save:
             output_dir = os.path.join(args.output_dir, f"{PREFIX_CHECKPOINT_DIR}-{state.global_step}")
             fix_valuehead_checkpoint(
@@ -120,13 +121,13 @@ class SaveProcessorCallback(TrainerCallback):
         self.processor = processor
 
     @override
-    def on_save(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_save(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if args.should_save:
             output_dir = os.path.join(args.output_dir, f"{PREFIX_CHECKPOINT_DIR}-{state.global_step}")
             self.processor.save_pretrained(output_dir)
 
     @override
-    def on_train_end(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_train_end(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if args.should_save:
             self.processor.save_pretrained(args.output_dir)
 
@@ -137,7 +138,7 @@ class PissaConvertCallback(TrainerCallback):
     """
 
     @override
-    def on_train_begin(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_train_begin(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if args.should_save:
             model = kwargs.pop("model")
             pissa_init_dir = os.path.join(args.output_dir, "pissa_init")
@@ -149,7 +150,7 @@ class PissaConvertCallback(TrainerCallback):
                 setattr(model.peft_config["default"], "init_lora_weights", init_lora_weights)
 
     @override
-    def on_train_end(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_train_end(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if args.should_save:
             model = kwargs.pop("model")
             pissa_init_dir = os.path.join(args.output_dir, "pissa_init")
@@ -233,7 +234,7 @@ class LogCallback(TrainerCallback):
             self.thread_pool = None
 
     @override
-    def on_init_end(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_init_end(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if (
             args.should_save
             and os.path.exists(os.path.join(args.output_dir, TRAINER_LOG))
@@ -243,40 +244,40 @@ class LogCallback(TrainerCallback):
             os.remove(os.path.join(args.output_dir, TRAINER_LOG))
 
     @override
-    def on_train_begin(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_train_begin(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if args.should_save:
             self.do_train = True
             self._reset(max_steps=state.max_steps)
             self._create_thread_pool(output_dir=args.output_dir)
 
     @override
-    def on_train_end(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_train_end(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         self._close_thread_pool()
 
     @override
-    def on_substep_end(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_substep_end(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if self.aborted:
             control.should_epoch_stop = True
             control.should_training_stop = True
 
     @override
-    def on_step_end(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_step_end(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if self.aborted:
             control.should_epoch_stop = True
             control.should_training_stop = True
 
     @override
-    def on_evaluate(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_evaluate(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if not self.do_train:
             self._close_thread_pool()
 
     @override
-    def on_predict(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_predict(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if not self.do_train:
             self._close_thread_pool()
 
     @override
-    def on_log(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_log(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if not args.should_save:
             return
 
@@ -318,7 +319,7 @@ class LogCallback(TrainerCallback):
 
     @override
     def on_prediction_step(
-        self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs
+        self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs
     ):
         if self.do_train:
             return
@@ -366,7 +367,7 @@ class ReporterCallback(TrainerCallback):
         os.environ["WANDB_PROJECT"] = os.getenv("WANDB_PROJECT", "llamafactory")
 
     @override
-    def on_train_begin(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+    def on_train_begin(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
         if not state.is_world_process_zero:
             return
 
@@ -393,3 +394,22 @@ class ReporterCallback(TrainerCallback):
                     "generating_args": self.generating_args.to_dict(),
                 }
             )
+
+
+class IterativeSparsityCallback(TrainerCallback):
+    r"""
+    A callback to update KV sparsity budget in the trained model
+    """
+
+    def __init__(self, sparse_attn_topk, min_topk=256, iter_freq=2000) -> None:
+        # progress
+        self.sparse_attn_topk = sparse_attn_topk
+        self.min_topk = min_topk
+        self.iter_freq = iter_freq
+
+    @override
+    def on_step_end(self, args: "TrainingArguments", state: "TrainerState", control: "CustomTrainerControl", **kwargs):
+        if (state.global_step+1) % self.iter_freq == 0:
+            if (self.sparse_attn_topk // 2) >= self.min_topk:
+                self.sparse_attn_topk //= 2
+                control.reduce_topk = True

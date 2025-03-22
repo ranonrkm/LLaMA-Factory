@@ -10,6 +10,7 @@ llamafactory-cli train \
     --flash_attn fa2 \
     --stage sft \
     --do_train true \
+    --finetuning_type full \
     --deepspeed examples/deepspeed/ds_z3_config.json \
     --dataset open_r1_math \
     --template qwen \
@@ -27,7 +28,7 @@ llamafactory-cli train \
     --learning_rate 5.0e-5 \
     --weight_decay 0.0001 \
     --num_train_epochs 5.0 \
-    --lr_scheduler_type linear \
+    --lr_scheduler_type cosine \
     --warmup_ratio 0.1 \
     --bf16 true \
     --ddp_timeout 180000000 \

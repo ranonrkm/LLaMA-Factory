@@ -22,9 +22,10 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from dataclasses import dataclass
 
 import torch
-from transformers import Trainer
+from transformers import Trainer, TrainerControl
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import is_fsdp_enabled
 from transformers.optimization import get_scheduler
@@ -637,3 +638,24 @@ def get_ray_trainer(
         ),
     )
     return trainer
+
+@dataclass
+class CustomTrainerControl(TrainerControl):
+    reduce_topk: bool = False
+
+    def _new_step(self):
+        super()._new_step()
+        self.reduce_topk = False
+
+    def state(self) -> dict:
+        return {
+            "args": {
+                "should_training_stop": self.should_training_stop,
+                "should_epoch_stop": self.should_epoch_stop,
+                "should_save": self.should_save,
+                "should_evaluate": self.should_evaluate,
+                "should_log": self.should_log,
+                "reduce_topk": self.reduce_topk,
+            },
+            "attributes": {},
+        }

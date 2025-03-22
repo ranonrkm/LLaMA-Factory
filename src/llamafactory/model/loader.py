@@ -163,7 +163,7 @@ def load_model(
             model = convert_pretrained_model_to_mod(model, config, model_args)
 
     if finetuning_args.sparse_training and is_trainable:
-        patch_attention(model, model_args)
+        patch_attention(model, finetuning_args)
 
     if not lazy_load:
         patch_model(model, tokenizer, model_args, is_trainable, add_valuehead)

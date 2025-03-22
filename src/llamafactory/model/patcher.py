@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from transformers import PretrainedConfig, PreTrainedTokenizer, ProcessorMixin
     from trl import AutoModelForCausalLMWithValueHead
 
-    from ..hparams import ModelArguments
+    from ..hparams import ModelArguments, FinetuningArguments
 
 
 logger = logging.get_logger(__name__)
@@ -218,16 +218,16 @@ def patch_valuehead_model(model: "AutoModelForCausalLMWithValueHead") -> None:
     setattr(model, "create_or_update_model_card", MethodType(create_or_update_model_card, model))
 
 
-def patch_attention(model: "PreTrainedModel", model_args: "ModelArguments") -> None:
+def patch_attention(model: "PreTrainedModel", sparse_args: "FinetuningArguments") -> None:
     # resursively go through all the modules and if the module is an attention ("self_attn") layer, patch its forward with sparse_attn_forward
     def patch_forward(module: torch.nn.Module) -> None:
         for name, child in module.named_children():
             if "self_attn" in name:
                 child.forward = MethodType(sparse_attn_forward, child)
-                child.sink = model_args.sparse_attn_sink
-                child.local = model_args.sparse_attn_local
-                child.topk = model_args.sparse_attn_topk
-                child.topp = model_args.sparse_attn_topp
+                child.sink = sparse_args.sparse_attn_sink
+                child.local = sparse_args.sparse_attn_local
+                child.topk = sparse_args.sparse_attn_topk
+                child.topp = sparse_args.sparse_attn_topp
             else:
                 patch_forward(child)
 
