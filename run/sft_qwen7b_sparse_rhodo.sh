@@ -4,10 +4,13 @@ OUTPUT_DIR=/sensei-fs/users/xuhuang/rsadhukh/LLaMA-Factory
 export ALLOW_EXTRA_ARGS=1
 topk=$1
 local=$2
+ctx_len=$3
+topk_iter=$4
 
 llamafactory-cli train \
   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
   --trust_remote_code \
+  --flash_attn fa2 \
   --stage sft \
   --do_train \
   --finetuning_type lora \
@@ -20,7 +23,7 @@ llamafactory-cli train \
   --deepspeed examples/deepspeed/ds_z3_config.json \
   --dataset open_r1_math \
   --template qwen \
-  --cutoff_len 16384 \
+  --cutoff_len $ctx_len \
   --overwrite_cache \
   --preprocessing_num_workers 16 \
   --output_dir ${OUTPUT_DIR}/saves/qwen2.5-7b/lora/sft_sparse_ctx16k_local${local}_top${topk} \
@@ -38,4 +41,4 @@ llamafactory-cli train \
   --bf16 \
   --ddp_timeout 180000000 \
   --save_total_limit 1 \
-  --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft-sparse-local${local}-top${topk}
+  --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-7b-lora16-ctx16k-sft-sparse-local${local}-top${topk}_iter${topk_iter}
