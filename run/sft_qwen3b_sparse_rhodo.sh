@@ -40,4 +40,5 @@ llamafactory-cli train \
     --bf16 \
     --ddp_timeout 180000000 \
     --save_total_limit 1 \
+    --resume_from_checkpoint ${OUTPUT_DIR}/saves/qwen2.5-3b/full/sft_sparse_ctx${ctx_len}_local${local}_top${topk}_iter${topk_iter}/checkpoint-6000 \
     --push_to_hub --export_hub_model_id Rano23/OpenR1-qwen-3b-sft_sparse_ctx${ctx_len}_local${local}_top${topk}_iter${topk_iter}
