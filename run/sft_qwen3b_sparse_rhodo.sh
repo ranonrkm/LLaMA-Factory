@@ -15,7 +15,7 @@ llamafactory-cli train \
     --do_train true \
     --finetuning_type full \
     --sparse_training \
-    --sparse_attn_topk ${topk} \
+    --sparse_attn_topk 256 \
     --sparse_attn_local ${local} \
     --sparse_attn_sink 4 \
     --sparsity_update_interval ${topk_iter} \
