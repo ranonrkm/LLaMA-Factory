@@ -255,6 +255,27 @@ def _setup_lora_tuning(
 
     return model
 
+def _setup_layerwise_tuning(
+    config: "PretrainedConfig",
+    model: "PreTrainedModel",
+    model_args: "ModelArguments",
+    finetuning_args: "FinetuningArguments",
+    is_trainable: bool,
+    cast_trainable_params_to_fp32: bool,
+) -> "PreTrainedModel":
+    adapter_targets = ("K_cls", "Q_cls")
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear) and any(target in name for target in adapter_targets):
+            module.requires_grad_(True)
+        else:
+            module.requires_grad_(False)
+
+    if is_trainable and cast_trainable_params_to_fp32:
+        for param in filter(lambda p: p.requires_grad, model.parameters()):
+            param.data = param.data.to(torch.float32)
+
+    return model
+
 
 def init_adapter(
     config: "PretrainedConfig",
@@ -297,6 +318,10 @@ def init_adapter(
         _setup_freeze_tuning(model, finetuning_args, is_trainable, cast_trainable_params_to_fp32)
     elif finetuning_args.finetuning_type == "lora":
         model = _setup_lora_tuning(
+            config, model, model_args, finetuning_args, is_trainable, cast_trainable_params_to_fp32
+        )
+    elif finetuning_args.finetuning_type == "layerwise":
+        model = _setup_layerwise_tuning(
             config, model, model_args, finetuning_args, is_trainable, cast_trainable_params_to_fp32
         )
     else:

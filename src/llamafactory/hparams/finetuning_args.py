@@ -124,6 +124,10 @@ class LoraArguments:
         default=False,
         metadata={"help": "Whether or not to create a new adapter with randomly initialized weight."},
     )
+    adapter_lr_ratio: float = field(
+        default=1.0,
+        metadata={"help": "The learning rate ratio for the adapter."},
+    )
 
 
 @dataclass
@@ -394,6 +398,10 @@ class SparseAttnArguments:
         default=False,
         metadata={"help": "Whether to use sparse attention for training. Do not specify it."},
     )
+    sparse_attn_method: Literal["topk", "ivf"] = field(
+        default="topk",
+        metadata={"help": "The method of sparse attention"},
+    )
     sparse_attn_topk: int = field(
         default=256,
         metadata={"help": "The top-k value for sparse attention."},
@@ -435,7 +443,7 @@ class FinetuningArguments(
         default="sft",
         metadata={"help": "Which stage will be performed in training."},
     )
-    finetuning_type: Literal["lora", "freeze", "full"] = field(
+    finetuning_type: Literal["lora", "freeze", "full", "layerwise"] = field(
         default="lora",
         metadata={"help": "Which fine-tuning method to use."},
     )
@@ -493,7 +501,7 @@ class FinetuningArguments(
         self.freeze_multi_modal_projector = self.freeze_multi_modal_projector and not self.train_mm_proj_only
         self.use_ref_model = self.stage == "dpo" and self.pref_loss not in ["orpo", "simpo"]
 
-        assert self.finetuning_type in ["lora", "freeze", "full"], "Invalid fine-tuning method."
+        assert self.finetuning_type in ["lora", "freeze", "full", "layerwise"], "Invalid fine-tuning method."
         assert self.ref_model_quantization_bit in [None, 8, 4], "We only accept 4-bit or 8-bit quantization."
         assert self.reward_model_quantization_bit in [None, 8, 4], "We only accept 4-bit or 8-bit quantization."
 

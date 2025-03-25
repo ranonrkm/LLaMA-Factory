@@ -33,7 +33,7 @@ from .model_utils.packing import configure_packing
 from .model_utils.quantization import configure_quantization
 from .model_utils.rope import configure_rope
 from .model_utils.valuehead import prepare_valuehead_model
-from .model_utils.sparse_attention import sparse_attn_forward
+from .model_utils.sparse_attention import sparse_attn_forward, Qwen2IVFAttention
 from .model_utils.visual import (
     autocast_projector_dtype,
     configure_visual_model,
@@ -231,4 +231,18 @@ def patch_attention(model: "PreTrainedModel", sparse_args: "FinetuningArguments"
             else:
                 patch_forward(child)
 
-    patch_forward(model)
+    def patch_ivf_attention(module: torch.nn.Module) -> None:
+        # iteratively go through the modules and replace any self_attn module (Qwen2Attention) with Qwen2IVFAttention
+        for name, child in module.named_children():
+            if "self_attn" in name:
+                if child.layer_idx > 0:
+                    setattr(module, name, Qwen2IVFAttention(child.config, child.layer_idx))
+            else:
+                patch_ivf_attention(child)
+
+    if sparse_args.sparse_attn_method == "topk":
+        patch_forward(model)
+    elif sparse_args.sparse_attn_method == "ivf":
+        patch_ivf_attention(model)
+    else:
+        raise NotImplementedError(f"Unknown sparse attention method: {sparse_args.sparse_attn_method}")

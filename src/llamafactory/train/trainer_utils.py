@@ -496,12 +496,61 @@ def _create_adam_mini_optimizer(
     logger.info_rank0("Using Adam-mini optimizer.")
     return optimizer
 
+def _create_ivf_optimizer(
+    model: "PreTrainedModel",
+    training_args: "TrainingArguments",
+    finetuning_args: "FinetuningArguments",
+) -> "torch.optim.Optimizer":
+    default_lr = training_args.learning_rate
+    adapter_lr = training_args.learning_rate * finetuning_args.adapter_lr_ratio
+    
+    adapter_params: List["torch.nn.Parameter"] = []
+    adapter_targets = ("K_cls", "Q_cls")
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear) and any(target in name for target in adapter_targets):
+            for param in module.parameters():
+                if param.requires_grad and len(param.shape) > 1:
+                    adapter_params.append(param)
+
+    id_adapter_params = {id(param) for param in adapter_params}
+    decay_params, nodecay_params = [], []
+    trainable_params: List["torch.nn.Parameter"] = []
+    decay_param_names = _get_decay_parameter_names(model)
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            trainable_params.append(param)
+            if id(param) not in id_adapter_params:
+                if name in decay_param_names:
+                    decay_params.append(param)
+                else:
+                    nodecay_params.append(param)
+
+    _, optim_kwargs = Trainer.get_optimizer_cls_and_kwargs(training_args)
+
+    if training_args.optim == "adamw_torch":
+        optim_class = torch.optim.AdamW
+    else:
+        raise NotImplementedError(f"Unknown optim: {training_args.optim}.")
+    
+    param_groups = [
+        dict(params=nodecay_params, lr=default_lr, weight_decay=0.0),
+        dict(params=decay_params, lr=default_lr, weight_decay=training_args.weight_decay),
+        dict(params=adapter_params, lr=adapter_lr, weight_decay=training_args.weight_decay),
+    ]
+    optimizer = optim_class(param_groups, **optim_kwargs)
+
+    logger.info_rank0(f"Using IVF optimizer with adapter lr ratio {finetuning_args.adapter_lr_ratio:.2f}.")
+    return optimizer
+    
 
 def create_custom_optimizer(
     model: "PreTrainedModel",
     training_args: "TrainingArguments",
     finetuning_args: "FinetuningArguments",
 ) -> Optional["torch.optim.Optimizer"]:
+    if finetuning_args.sparse_training and finetuning_args.sparse_attn_method == "ivf":
+        return _create_ivf_optimizer(model, training_args, finetuning_args)
+    
     if finetuning_args.use_galore:
         return _create_galore_optimizer(model, training_args, finetuning_args)
 

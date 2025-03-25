@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
+from transformers.cache_utils import Cache
 from transformers.processing_utils import Unpack
 from transformers.utils import logging
 
@@ -284,3 +285,130 @@ def sparse_attn_forward_approx(
         attn_output = self.o_proj(attn_output)
         return attn_output, attn_weights
 
+
+from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2DecoderLayer
+
+class Qwen2IVFAttention(Qwen2Attention):
+    def __init__(self, config, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
+        self.sink = 4
+        self.local = 512
+        self.num_centroids = 256 #config.num_centroids
+        self.nprobe = 4
+        # k_cls: # num_kv_heads, num_centroids, head_dim
+        # q_cls: # num_heads, num_centroids, head_dim
+        # concat the classifiers and then split along the head dimension
+        self.K_cls = nn.Linear(config.hidden_size, config.num_key_value_heads * self.num_centroids, bias=False)
+        self.Q_cls = nn.Linear(config.hidden_size, config.num_attention_heads * self.num_centroids, bias=False)
+        self.cls_temp = 1.0
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
+        past_key_value: Optional[Cache] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+
+        # reshape
+        query_states = query_states.view(hidden_shape).transpose(1, 2)
+        key_states = key_states.view(hidden_shape).transpose(1, 2)
+        value_states = value_states.view(hidden_shape).transpose(1, 2)
+
+        # apply classifiers to get class scores
+        H_q = self.Q_cls(hidden_states)
+        H_k = self.K_cls(hidden_states)
+
+        cls_shape = (*input_shape, -1, self.num_centroids)
+        H_q = H_q.view(cls_shape).transpose(1, 2)   # B h_q N C
+        H_k = H_k.view(cls_shape).transpose(1, 2)   # B h_kv N C
+        H_q = F.log_softmax(H_q / self.cls_temp, dim=-1)    # B h_q N C   
+        H_k_soft = F.softmax(H_k / self.cls_temp, dim=-1)
+        H_k_hard = H_k.argmax(dim=-1)   # B h_kv N
+        H_k_hard = F.one_hot(H_k_hard.view(-1), self.num_centroids).to(H_k_soft.dtype).view(H_k.shape)   # B h_kv N C
+        H_k = H_k_soft - H_k_soft.detach() + H_k_hard.detach()  # STE
+
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        seq_len = hidden_states.size(1)
+        
+        sink = self.sink    #4
+        local = self.local  #1024
+        n_full_attn = sink + local*2
+        chunk_size = 512
+
+        sliding_window = None
+        attention_interface = ALL_ATTENTION_FUNCTIONS["flash_attention_2"]
+        dropout = 0.0 if not self.training else self.attention_dropout
+        attn_mask = None
+        num_kv_groups = self.num_key_value_groups
+        aux_loss = torch.tensor(0.0, device=hidden_states.device)
+
+        assert self.layer_idx > 0, "layer_idx should be greater than 0"
+        if seq_len > n_full_attn + chunk_size:
+            num_kv_heads = self.config.num_key_value_heads
+            attn_mask = torch.ones(*key_states.shape[:-1], seq_len, device=hidden_states.device).to(torch.bool)
+            attn_mask.tril_(0)
+
+            num_chunks = (seq_len - n_full_attn) // chunk_size
+            for i in range(num_chunks): 
+                start = n_full_attn + i * chunk_size
+                end = seq_len if i == num_chunks - 1 else start + chunk_size
+
+                with torch.no_grad():
+                    dynamic_mask = torch.ones(*key_states.shape[:2], end - start, end, device=hidden_states.device).to(torch.bool)
+                    dynamic_mask.tril_(start - local)
+                    dynamic_mask[..., :sink] = False
+                    attn_mask[..., start:end, :end].logical_xor_(dynamic_mask)
+
+                    query_states_reshaped = rearrange(query_states[..., start:end, :], 'b (h r) n d -> b h r n d', r=num_kv_groups)
+                    attn = torch.einsum('b h r n d, b h m d -> b h r n m', query_states_reshaped, key_states.narrow(2, 0, end)) / math.sqrt(self.head_dim)
+                    dynamic_mask = dynamic_mask.unsqueeze(2).expand(-1, -1, num_kv_groups, -1, -1)
+                    attn.masked_fill_(dynamic_mask.logical_not(), -1e9)
+                    attn = F.softmax(attn.float(), dim=-1)  # B h_kv r N M
+                    cls_scores = rearrange(H_q[..., start:end, :], 'b (h r) n c -> b h r n c', r=num_kv_groups).mean(dim=2)  # B h_kv N C
+                    topk_cls = cls_scores.topk(self.nprobe, dim=-1).indices # B h_kv N nprobe
+                    cls_mask = torch.zeros_like(cls_scores, dtype=torch.float16)
+                    cls_mask.scatter_(dim=-1, index=topk_cls, value=1)
+                    approx_mask = torch.einsum('b h n c, b h m c -> b h n m', cls_mask, H_k_hard.narrow(2, 0, end).to(torch.float16))  # B h_kv N M
+                    approx_mask = approx_mask.gt(0).to(dynamic_mask.dtype)
+                    approx_mask = approx_mask.logical_and(dynamic_mask[:, :, 0])
+                    attn_mask[..., start:end, :end].logical_or_(approx_mask)
+
+                # TODO: add layer-wise loss
+                AHk = torch.einsum('b h r n m, b h m c -> b h r n c', attn.to(H_k_hard.dtype), H_k_hard.narrow(2, 0, end))
+                AHk = rearrange(AHk, 'b h r n c -> b (h r) n c')
+                aux_loss += F.kl_div(H_q[..., start:end, :], AHk, reduction='mean', log_target=False)
+
+            attn_mask = attn_mask.unsqueeze(2).expand(-1, -1, num_kv_groups, -1, -1)
+            attn_mask = rearrange(attn_mask, 'b h r t n -> b (h r) t n')
+
+            attention_interface = ALL_ATTENTION_FUNCTIONS["sdpa"]  
+            # dropout = 0.0
+            aux_loss = aux_loss / num_chunks
+
+        with torch.no_grad():
+            attn_output, attn_weights = attention_interface(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask=attn_mask,    
+                dropout=dropout,    # (not self.training or self.layer_idx > 0)
+                scaling=self.scaling,
+                sliding_window=sliding_window,  # main diff with Llama
+                **kwargs,
+            )  
+
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+        return attn_output, aux_loss

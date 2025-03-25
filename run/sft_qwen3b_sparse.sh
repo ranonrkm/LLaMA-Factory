@@ -4,19 +4,22 @@ export ALLOW_EXTRA_ARGS=1
 topk=$1
 local=$2
 ctx_len=$3
+topk_iter=$4
 
 llamafactory-cli train \
     --model_name_or_path Qwen/Qwen2.5-1.5B-Instruct \
     --trust_remote_code true \
     --flash_attn fa2 \
     --stage sft \
-    --deepspeed examples/deepspeed/ds_z3_config.json \
     --do_train true \
-    --finetuning_type full \
+    --deepspeed examples/deepspeed/ds_z3_config.json \
+    --finetuning_type layerwise \
     --sparse_training \
+    --sparse_attn_method ivf \
     --sparse_attn_topk ${topk} \
     --sparse_attn_local ${local} \
     --sparse_attn_sink 4 \
+    --sparsity_update_interval ${topk_iter} \
     --dataset open_r1_math \
     --template qwen \
     --cutoff_len $ctx_len \
@@ -37,4 +40,7 @@ llamafactory-cli train \
     --warmup_ratio 0.1 \
     --bf16 true \
     --ddp_timeout 180000000 \
-    --save_total_limit 1 
+    --save_total_limit 1 #\
+    # --resume_from_checkpoint 
+    # --deepspeed examples/deepspeed/ds_z3_config.json \
+    
